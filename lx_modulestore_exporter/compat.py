@@ -16,6 +16,7 @@ eliminates external dependencies
 from __future__ import absolute_import, unicode_literals
 
 import logging
+import re
 
 LOG = logging.getLogger(__name__)
 
@@ -75,9 +76,20 @@ def collect_assets_from_text(text, course_id):
     except ImportError as exc:
         raise EdXPlatformImportError(exc)
 
+    # Replace static urls like '/static/foo.png'
     static_paths = []
     replace_static_urls(text=text, course_id=course_id, static_paths_out=static_paths)
     for (path, uri) in static_paths:
+        content = get_asset_content_from_path(course_id, path)
+        if content is None:
+            LOG.error("Static asset not found: (%s, %s)", path, uri)
+        else:
+            yield {'content': content, 'path': path}
+
+    # Replace absolute static URLs:
+    asset_full_url_re = r'https?://[^/]+/asset-v1:(?P<course_part>.+)\+type@asset\+block@(?P<filename>[\w\-\. \+]+)'
+    for match in re.finditer(asset_full_url_re, text):
+        path = match.group('filename')
         content = get_asset_content_from_path(course_id, path)
         if content is None:
             LOG.error("Static asset not found: (%s, %s)", path, uri)

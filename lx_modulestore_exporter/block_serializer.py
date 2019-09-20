@@ -8,8 +8,7 @@ import os
 from collections import namedtuple
 
 import six
-from lxml.etree import Element
-from lxml.etree import tostring as etree_tostring
+from lxml import etree
 
 from . import compat
 from .adapters import override_export_fs
@@ -59,8 +58,13 @@ class XBlockSerializer(object):
         self.static_files = []
         self.def_id = blockstore_def_key_from_modulestore_usage_key(self.orig_block_key)
 
+        # Special cases:
+        if self.orig_block_key.block_type == 'html':
+            self.serialize_html_block(block)
+            return
+
         # Create an XML node to hold the exported data
-        olx_node = Element("root")  # The node name doesn't matter: add_xml_to_node will change it
+        olx_node = etree.Element("root")  # The node name doesn't matter: add_xml_to_node will change it
         # ^ Note: We could pass nsmap=xblock.core.XML_NAMESPACES here, but the
         # resulting XML namespace attributes don't seem that useful?
         with override_export_fs(block) as filesystem:  # Needed for XBlocks that inherit XModuleDescriptor
@@ -113,26 +117,34 @@ class XBlockSerializer(object):
                 def_id = blockstore_def_key_from_modulestore_usage_key(child_id)
                 olx_node.append(olx_node.makeelement("xblock-include", {"definition": def_id}))
         # Store the resulting XML as a string:
-        self.olx_str = etree_tostring(olx_node, encoding="utf-8", pretty_print=True)
+        self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
         # And add a comment:
-        self.olx_str += (
-            '<!-- Imported from {} using lx-modulestore-exporter -->\n'.format(six.text_type(self.orig_block_key))
-        ).encode('utf-8')
+        # self.olx_str += (
+        #     '<!-- Imported from {} using lx-modulestore-exporter -->\n'.format(six.text_type(self.orig_block_key))
+        # ).encode('utf-8')
         # Search the OLX for references to files stored in the course's
         # "Files & Uploads" (contentstore):
         course_key = self.orig_block_key.course_key
         for asset in compat.collect_assets_from_text(self.olx_str, course_key):
             # TODO: need to rewrite the URLs/paths in the olx_str to the new format/location
             self.add_static_asset(asset['content'])
-        # Special case: for HTML blocks, the HTML we need to scan is in a separate .html file,
-        # not in the OLX string. But we can access it at 'block.data':
+
+    def serialize_html_block(self, block):
+        """
+        Special case handling for HTML blocks
+        """
+        olx_node = etree.Element("html")
+        if block.display_name:
+            olx_node.attrib["display_name"] = block.display_name
+        olx_node.text = etree.CDATA("\n" + block.data + "\n")
+        self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
         if self.orig_block_key.block_type == 'html':
-            for asset in compat.collect_assets_from_text(block.data, course_key):
+            for asset in compat.collect_assets_from_text(block.data, self.orig_block_key.course_key):
                 self.add_static_asset(asset['content'])
 
     def add_static_asset(self, asset):
         """
-        Add the given contentstore StaticContent file to the's list of static
+        Add the given contentstore StaticContent file to the list of static
         files that this block uses.
         """
         # note: asset.name is a human-friendly name, not necessarily the file name.

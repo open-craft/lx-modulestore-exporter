@@ -5,6 +5,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import json
 import logging
+import os
 
 from django.utils.translation import gettext as _
 
@@ -14,7 +15,7 @@ from .block_serializer import XBlockSerializer
 log = logging.getLogger(__name__)
 
 
-def export_data(root_block_key):
+def export_data(root_block_key, out_dir):
     """
     Transfer the given block (and its children) to Blockstore.
 
@@ -24,6 +25,7 @@ def export_data(root_block_key):
     * collection_uuid: UUID of the destination collection
       If no bundle_uuid provided, then a new bundle will be created here and that becomes the destination bundle.
     """
+    log.info(root_block_key)
 
     # Step 1: Serialize the XBlocks to OLX files + static asset files
 
@@ -45,51 +47,22 @@ def export_data(root_block_key):
 
     root_block = compat.get_block(root_block_key)
 
-    # # Step 2: Create a bundle and draft to hold the incoming data:
-    # if bundle_uuid is None:
-    #     log.debug('Creating bundle')
-    #     bundle_data = create_bundle(
-    #         collection_uuid=collection_uuid,
-    #         title=getattr(root_block, 'display_name', root_block_key),
-    #         slug=root_block_key.block_id,
-    #         description=_("Transferred to Blockstore from Open edX {block_key}").format(block_key=root_block_key),
-    #     )
-    #     bundle_uuid = bundle_data["uuid"]
-    # log.debug('Creating "%s" draft to hold incoming files', BUNDLE_DRAFT_NAME)
-    # draft_data = create_draft(
-    #     bundle_uuid=bundle_uuid,
-    #     name=BUNDLE_DRAFT_NAME,
-    #     title="OLX imported via lx-modulestore-exporter",
-    # )
-    # bundle_draft_uuid = draft_data['uuid']
+    out_dir = os.path.join(out_dir, root_block_key.block_type) + '-' + root_block_key.block_id + '/'
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)
 
-    # # Step 3: Upload files into the draft
+    # For each XBlock that we're exporting:
+    for data in serialized_blocks.values():
+        if data.orig_block_key == root_block_key:
+            olx_path = out_dir + 'definition-1.xml'
+        else:
+            olx_path = out_dir + 'definition-{}.xml'.format(data.def_id.replace('/', '-'))
+        with open(olx_path, 'wb') as fh:
+            log.info(" -> " + olx_path)
+            fh.write(data.olx_str)
 
-    # manifest = {
-    #     'schema': BUNDLE_SCHEMA_VERSION,
-    #     'type': _bundle_type(root_block_key.block_type),
-    #     'assets': [],
-    #     'components': [],
-    #     'dependencies': [],
-    # }
+        for asset_file in data.static_files:
+            print("Uploading static asset file to S3: {}".format(asset_file.name))
+            # TODO: upload asset_file.data to S3, ensure OLX is rewritten
 
-    # # For each XBlock that we're exporting:
-    # for data in serialized_blocks.values():
-    #     # Add the OLX to the draft:
-    #     folder_path = '{}/'.format(data.def_id)
-    #     path = folder_path + 'definition.xml'
-    #     log.info('Uploading {} to {}'.format(data.orig_block_key, path))
-    #     add_file_to_draft(bundle_draft_uuid, path, data.olx_str)
-    #     manifest['components'].append(path)
-    #     # If the block depends on any static asset files, add those too:
-    #     for asset_file in data.static_files:
-    #         asset_path = folder_path + 'static/' + asset_file.name
-    #         add_file_to_draft(bundle_draft_uuid, asset_path, asset_file.data)
-    #         manifest['assets'].append(asset_path)
-
-    # # Commit the manifest file. TODO: do we actually need this?
-    # add_file_to_draft(bundle_draft_uuid, 'bundle.json', json.dumps(manifest, ensure_ascii=False))
-
-    # # Step 4: Commit the draft
-    # commit_draft(bundle_draft_uuid)
-    # log.info('Finished import into bundle {}'.format(bundle_uuid))
+    log.info("  ")
