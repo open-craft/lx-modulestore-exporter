@@ -61,8 +61,23 @@ class XBlockSerializer(object):
         # Special cases:
         if self.orig_block_key.block_type == 'html':
             self.serialize_html_block(block)
-            return
+        else:
+            self.serialize_normal_block(block)
 
+        course_key = self.orig_block_key.course_key
+        self.olx_str = compat.rewrite_absolute_static_urls(self.olx_str, course_key)
+        # And add a comment:
+        # self.olx_str += (
+        #     '<!-- Imported from {} using lx-modulestore-exporter -->\n'.format(six.text_type(self.orig_block_key))
+        # ).encode('utf-8')
+
+        # Search the OLX for references to files stored in the course's
+        # "Files & Uploads" (contentstore):
+        for asset in compat.collect_assets_from_text(self.olx_str, course_key):
+            # TODO: need to rewrite the URLs/paths in the olx_str to the new format/location
+            self.add_static_asset(asset['content'])
+
+    def serialize_normal_block(self, block):
         # Create an XML node to hold the exported data
         olx_node = etree.Element("root")  # The node name doesn't matter: add_xml_to_node will change it
         # ^ Note: We could pass nsmap=xblock.core.XML_NAMESPACES here, but the
@@ -118,16 +133,6 @@ class XBlockSerializer(object):
                 olx_node.append(olx_node.makeelement("xblock-include", {"definition": def_id}))
         # Store the resulting XML as a string:
         self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
-        # And add a comment:
-        # self.olx_str += (
-        #     '<!-- Imported from {} using lx-modulestore-exporter -->\n'.format(six.text_type(self.orig_block_key))
-        # ).encode('utf-8')
-        # Search the OLX for references to files stored in the course's
-        # "Files & Uploads" (contentstore):
-        course_key = self.orig_block_key.course_key
-        for asset in compat.collect_assets_from_text(self.olx_str, course_key):
-            # TODO: need to rewrite the URLs/paths in the olx_str to the new format/location
-            self.add_static_asset(asset['content'])
 
     def serialize_html_block(self, block):
         """
@@ -138,9 +143,6 @@ class XBlockSerializer(object):
             olx_node.attrib["display_name"] = block.display_name
         olx_node.text = etree.CDATA("\n" + block.data + "\n")
         self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
-        if self.orig_block_key.block_type == 'html':
-            for asset in compat.collect_assets_from_text(block.data, self.orig_block_key.course_key):
-                self.add_static_asset(asset['content'])
 
     def add_static_asset(self, asset):
         """
