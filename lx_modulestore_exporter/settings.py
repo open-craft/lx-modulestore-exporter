@@ -12,6 +12,14 @@ LX_EXPORTER_STATIC_FILES_BUCKET = 'content.labxchange.org'
 LX_EXPORTER_STATIC_FILES_PATH = 'learning-item-assets/'
 LX_EXPORTER_AWS_ACCESS_KEY_ID = 'AKIA6FHROMDTIHAZSHHW'
 LX_EXPORTER_AWS_ACCESS_KEY_SECRET = 'set-me'
+LX_EXPORTER_CMS_TARGETS = {
+    # Example:
+    'studio.example.com': {
+        'lms_oauth2_url': 'https://courses.example.com/oauth2',
+        'oauth_key': 'key',
+        'oauth_secret': 'secret',
+    }
+}
 
 # Register settings: ###########################################################
 
@@ -25,3 +33,4 @@ def plugin_settings(settings):
     settings.LX_EXPORTER_STATIC_FILES_PATH = LX_EXPORTER_STATIC_FILES_PATH
     settings.LX_EXPORTER_AWS_ACCESS_KEY_ID = LX_EXPORTER_AWS_ACCESS_KEY_ID
     settings.LX_EXPORTER_AWS_ACCESS_KEY_SECRET = LX_EXPORTER_AWS_ACCESS_KEY_SECRET
+    settings.LX_EXPORTER_CMS_TARGETS = LX_EXPORTER_CMS_TARGETS
