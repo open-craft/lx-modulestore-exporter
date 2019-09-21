@@ -84,7 +84,7 @@ class Command(BaseCommand):
             try:
                 existing_olx = studio_client.get_library_block_olx(block_key)
             except HTTPError:
-                # For some reason this is sometimes returning a 500?
+                # For some reason this is sometimes returning a 500? Maybe unicode-related?
                 print(" -> Warning: 500 when trying to check existing OLX of {}".format(block_key))
                 existing_olx = "unknown"
             if existing_olx.strip() != new_olx.strip():
@@ -139,7 +139,7 @@ class Command(BaseCommand):
                 # Convert from an HTML block to the new simulation block:
                 html_olx_str = read_olx('definition-1.xml')
                 try:
-                    sim_url = re.search('src=[\'"](?P<sim_url>[^\'"]+)[\'"]', html_olx_str).group('sim_url')
+                    sim_url = re.search('(src|href)=[\'"](?P<sim_url>[^\'"]+)[\'"]', html_olx_str).group('sim_url')
                 except AttributeError:
                     raise ValueError("Unable to find simulation src in html block OLX.")
                 olx_root = etree.fromstring(html_olx_str)
