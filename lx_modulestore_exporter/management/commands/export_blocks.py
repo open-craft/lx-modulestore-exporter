@@ -1,5 +1,5 @@
 """
-Export a block and its children as OLX
+Export multiple blocks and their children as OLX. Reads 
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -12,20 +12,13 @@ from django.core.management.base import BaseCommand
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
 
+from .export_block import dir_path
 from ...export_data import export_data
-
-
-def dir_path(string):
-    """ Check that an argument is a valid directory """
-    if os.path.isdir(string):
-        return string
-    else:
-        raise ValueError("{} is not a directory".format(string))
 
 
 class Command(BaseCommand):
     """
-    export_block management command.
+    export_blocks management command.
     """
 
     def __init__(self, *args, **kwargs):
@@ -39,12 +32,11 @@ class Command(BaseCommand):
         """
         Add named arguments.
         """
-        self.args['block_key'] = parser.add_argument(
-            '--block-key',
+        self.args['id_file'] = parser.add_argument(
+            '--id-file',
             type=str,
             required=True,
-            help='Usage key of the source Open edX XBlock, '
-                 'e.g., "block-v1:edX+DemoX+Demo_Course+type@html+block@030e35c4756a4ddc8d40b95fbbfff4d4"'
+            help=("File where the first word on each line is the ID of an XBlock to export")
         )
         self.args['out_dir'] = parser.add_argument(
             '--out-dir',
@@ -58,12 +50,13 @@ class Command(BaseCommand):
         Validate the arguments, and start the transfer.
         """
         self.set_logging(options['verbosity'])
-        try:
-            block_key = UsageKey.from_string(options['block_key'])
-        except InvalidKeyError:
-            raise ArgumentError(message='Invalid block usage key', argument=self.args['block_key'])
- 
-        export_data(root_block_key=block_key, out_dir=options['out_dir'])
+
+        with open(options['id_file'], 'r') as id_fh:
+            block_key_list = [line.split()[0] for line in id_fh.readlines() if line.strip()]
+
+        for block_key_str in block_key_list:
+            block_key = UsageKey.from_string(block_key_str)
+            export_data(root_block_key=block_key, out_dir=options['out_dir'])
 
     def set_logging(self, verbosity):
         """

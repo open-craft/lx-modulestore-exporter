@@ -26,3 +26,20 @@ into `cms/envs/private.py` (get the value from Vault, "IAM user for manually upl
 ```
 ./manage.py cms export_block --out-dir ~/olx-exports --block-key block-v1:...
 ```
+
+## Usage (multiple blocks)
+
+First:
+
+```
+from labxchange.apps.library.models import ItemMetadata
+for row in ItemMetadata.objects.exclude(migration_id='').values_list('migration_id', 'id'):
+    print(f'{row[0]} {row[1]}')
+```
+
+Then save that into a file and run:
+
+```
+./manage.py cms export_blocks --out-dir /edx/src/lx-modulestore-exporter/out \
+  --id-file /edx/src/lx-modulestore-exporter/out/id_list
+```
