@@ -78,6 +78,8 @@ class Command(BaseCommand):
         with open(options['id_file'], 'r') as id_fh:
             block_key_list = [line.split() for line in id_fh.readlines() if line.strip() and line.strip()[0] != '#']
 
+        unhandled_items = [] # List of tuples of (old_key, new_key) for any items we can't do automatically
+
         # Upload the OLX file by file:
         for old_key_str, new_key_str in block_key_list:
             old_key = UsageKey.from_string(old_key_str)
@@ -104,10 +106,19 @@ class Command(BaseCommand):
                         olx_dir, "definition-{}-{}.xml".format(old_block_type, old_block_id), old_block_type, new_key,
                     )
                 else:
-                    raise NotImplementedError("Can't handle {} -> {}".format(old_key, new_key))
+                    print(" -> can't handle this type, no known conversion")
+                    unhandled_items.append((old_key, new_key))
             else:
                 # This is a single block. Convert and upload it:
-                self.convert_and_upload_olx_file(olx_dir, "definition-1.xml", old_key.block_type, new_key)
+                result = self.convert_and_upload_olx_file(olx_dir, "definition-1.xml", old_key.block_type, new_key)
+                if not result:
+                    print(" -> can't handle this type, no known conversion")
+                    unhandled_items.append((old_key, new_key))
+
+        if unhandled_items:
+            print("\n\nThe following items could not be migrated:")
+            for old_key, new_key in unhandled_items:
+                print("{} {}".format(old_key, new_key))
 
     def set_logging(self, verbosity):
         """
@@ -152,6 +163,8 @@ class Command(BaseCommand):
         Given a single OLX file (with no children), convert it if necessary from
         old_block_type to new_key.block_type and upload it to Blockstore (as
         new_key).
+
+        Returns True if the block can be migrated and False otherwise
         """
 
         with open(olx_dir + '/' + olx_file, 'r') as fh:
@@ -194,4 +207,5 @@ class Command(BaseCommand):
             print(" -> converting to simulation")
             self.set_block_olx(new_key, olx_node_out)
         else:
-            raise NotImplementedError("Can't handle {} -> {}".format(old_block_type, new_key))
+            return False
+        return True
