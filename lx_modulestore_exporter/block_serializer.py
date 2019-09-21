@@ -65,14 +65,9 @@ class XBlockSerializer(object):
             self.serialize_normal_block(block)
 
         course_key = self.orig_block_key.course_key
-        self.olx_str = compat.rewrite_absolute_static_urls(self.olx_str, course_key)
-        # And add a comment:
-        # self.olx_str += (
-        #     '<!-- Imported from {} using lx-modulestore-exporter -->\n'.format(six.text_type(self.orig_block_key))
-        # ).encode('utf-8')
-
         # Search the OLX for references to files stored in the course's
         # "Files & Uploads" (contentstore):
+        self.olx_str = compat.rewrite_absolute_static_urls(self.olx_str, course_key)
         for asset in compat.collect_assets_from_text(self.olx_str, course_key):
             # TODO: need to rewrite the URLs/paths in the olx_str to the new format/location
             self.add_static_asset(asset['content'])

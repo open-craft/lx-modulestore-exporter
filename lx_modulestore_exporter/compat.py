@@ -95,7 +95,11 @@ def collect_assets_from_text(text, course_id):
 
     # Replace static urls like '/static/foo.png'
     static_paths = []
-    replace_static_urls(text=text, course_id=course_id, static_paths_out=static_paths)
+    # Drag-and-drop-v2 has
+    #     &quot;/static/blah.png&quot;
+    # which must be changed to "/static/blah.png" for replace_static_urls to work:
+    text2 = text.replace("&quot;", '"')
+    replace_static_urls(text=text2, course_id=course_id, static_paths_out=static_paths)
     for (path, uri) in static_paths:
         content = get_asset_content_from_path(course_id, path)
         if content is None:

@@ -107,7 +107,7 @@ class Command(BaseCommand):
 
             # Various cases:
             if old_key.block_type == new_key.block_type:
-                if new_key.block_type == 'html':
+                if new_key.block_type in ('html', 'video', 'drag-and-drop-v2'):
                     set_block_olx(new_key, read_olx("definition-1.xml"))
                 else:
                     raise NotImplementedError("Can't handle {} blocks yet.".format(new_key.block_type))
