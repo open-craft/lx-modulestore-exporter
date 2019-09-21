@@ -7,12 +7,41 @@ import json
 import logging
 import os
 
+from django.conf import settings
 from django.utils.translation import gettext as _
+import boto3
+import botocore
 
 from . import compat
 from .block_serializer import XBlockSerializer
 
 log = logging.getLogger(__name__)
+
+
+# Connect to AWS:
+session = boto3.Session(
+    aws_access_key_id=settings.LX_EXPORTER_AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.LX_EXPORTER_AWS_ACCESS_KEY_SECRET,
+)
+s3 = session.resource('s3')
+s3_bucket = s3.Bucket(settings.LX_EXPORTER_STATIC_FILES_BUCKET)
+
+
+def s3_bucket_has_object(path):
+    """
+    Does our S3 bucket have the specified file/object/key?
+    """
+    try:
+        s3_bucket.Object(path).load()
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "404":
+            # The object does not exist.
+            return False
+        else:
+            # Something else has gone wrong.
+            raise
+    else:
+        return True
 
 
 def export_data(root_block_key, out_dir):
@@ -51,18 +80,30 @@ def export_data(root_block_key, out_dir):
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
+    s3_path_prefix = (
+        settings.LX_EXPORTER_STATIC_FILES_PATH + root_block_key.block_type + '-' + root_block_key.block_id + '/'
+    )
+    s3_url_prefix = 'https://' + settings.LX_EXPORTER_STATIC_FILES_BUCKET + '/' + s3_path_prefix
     # For each XBlock that we're exporting:
     for data in serialized_blocks.values():
+        olx_str = data.olx_str
+
+        for asset_file in data.static_files:
+            dest_path = s3_path_prefix + asset_file.name
+            print("Uploading static asset file to S3: {} -> {}".format(asset_file.name, dest_path))
+            if not s3_bucket_has_object(dest_path):
+                s3_bucket.put_object(Key=dest_path, Body=asset_file.data)
+            else:
+                print(" -> skipping, already uploaded")
+            dest_url = s3_url_prefix + asset_file.name
+            olx_str = olx_str.replace('/static/' + asset_file.name, dest_url)
+        
         if data.orig_block_key == root_block_key:
             olx_path = out_dir + 'definition-1.xml'
         else:
             olx_path = out_dir + 'definition-{}.xml'.format(data.def_id.replace('/', '-'))
         with open(olx_path, 'wb') as fh:
             log.info(" -> " + olx_path)
-            fh.write(data.olx_str)
-
-        for asset_file in data.static_files:
-            print("Uploading static asset file to S3: {}".format(asset_file.name))
-            # TODO: upload asset_file.data to S3, ensure OLX is rewritten
+            fh.write(olx_str)
 
     log.info("  ")
