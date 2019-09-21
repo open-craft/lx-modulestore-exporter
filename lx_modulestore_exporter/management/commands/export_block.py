@@ -49,7 +49,7 @@ class Command(BaseCommand):
         self.args['out_dir'] = parser.add_argument(
             '--out-dir',
             type=dir_path,
-            required=True,
+            default='/edx/src/lx-modulestore-exporter/out',
             help='Directory to put the OLX output files'
         )
 

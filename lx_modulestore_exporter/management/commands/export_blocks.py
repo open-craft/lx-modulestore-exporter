@@ -35,13 +35,13 @@ class Command(BaseCommand):
         self.args['id_file'] = parser.add_argument(
             '--id-file',
             type=str,
-            required=True,
+            default='/edx/src/lx-modulestore-exporter/out/id_list',
             help=("File where the first word on each line is the ID of an XBlock to export")
         )
         self.args['out_dir'] = parser.add_argument(
             '--out-dir',
             type=dir_path,
-            required=True,
+            default='/edx/src/lx-modulestore-exporter/out',
             help='Directory to put the OLX output files'
         )
 
@@ -52,7 +52,7 @@ class Command(BaseCommand):
         self.set_logging(options['verbosity'])
 
         with open(options['id_file'], 'r') as id_fh:
-            block_key_list = [line.split()[0] for line in id_fh.readlines() if line.strip()]
+            block_key_list = [line.split()[0] for line in id_fh.readlines() if line.strip() and line.strip()[0] != '#']
 
         for block_key_str in block_key_list:
             block_key = UsageKey.from_string(block_key_str)

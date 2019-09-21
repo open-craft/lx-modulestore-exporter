@@ -20,9 +20,6 @@ develop-eggs
 lib
 lib64
 
-# Output
-out/
-
 # Installer logs
 pip-log.txt
 
