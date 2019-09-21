@@ -33,6 +33,7 @@ class Command(BaseCommand):
         self.help = __doc__
         self.logger = logging.getLogger()
         self.args = {}
+        self.studio_client = None
 
     def add_arguments(self, parser):
         """
@@ -64,35 +65,14 @@ class Command(BaseCommand):
         self.set_logging(options['verbosity'])
 
         # Create an API client for interacting with Studio:
-        studio_client = StudioClient(
+        self.studio_client = StudioClient(
             studio_url='https://' + options['cms_domain'],
             config=settings.LX_EXPORTER_CMS_TARGETS[options['cms_domain']],
         )
+
         # Verify that we can connect to Studio:
-        response = studio_client.api_call('get', '/api/user/v1/me')
+        response = self.studio_client.api_call('get', '/api/user/v1/me')
         print("Connecting to studio as {}".format(response["username"]))
-
-        # Declare a helper method:
-        def set_block_olx(block_key, new_olx):
-            """
-            Helper method for overwriting an XBlock's OLX
-
-            new_olx can be an OLX string or an etree Element node
-            """
-            if not isinstance(new_olx, six.string_types):
-                new_olx = etree.tostring(new_olx, encoding="utf-8", pretty_print=True)
-            try:
-                existing_olx = studio_client.get_library_block_olx(block_key)
-            except HTTPError:
-                # For some reason this is sometimes returning a 500? Maybe unicode-related?
-                print(" -> Warning: 500 when trying to check existing OLX of {}".format(block_key))
-                existing_olx = "unknown"
-            if existing_olx.strip() != new_olx.strip():
-                studio_client.set_library_block_olx(block_key, new_olx)
-                studio_client.commit_library_changes(block_key.lib_key)
-                print(" -> Updated OLX of {}".format(block_key))
-            else:
-                print(" -> No change to OLX of {}".format(block_key))
 
         # Read in the list of IDs (each line is an old modulestore ID and the new blockstore ID)
         with open(options['id_file'], 'r') as id_fh:
@@ -106,51 +86,28 @@ class Command(BaseCommand):
 
             olx_dir = os.path.join(options["olx_dir"], old_key.block_type + "-" + old_key.block_id)
 
-            def read_olx(filename):
-                with open(olx_dir + '/' + filename, 'r') as fh:
-                    return fh.read()
-
             # Various cases:
-            if old_key.block_type == new_key.block_type:
-                if new_key.block_type in ('html', 'video', 'drag-and-drop-v2'):
-                    set_block_olx(new_key, read_olx("definition-1.xml"))
+            if old_key.block_type == 'vertical':
+                # This is a vertical block. What kind of children does it have?
+
+                def read_olx(filename):
+                    with open(olx_dir + '/' + filename, 'r') as fh:
+                        return fh.read()
+
+                vertical_olx_str = read_olx('definition-1.xml')
+                olx_root = etree.fromstring(vertical_olx_str)
+                children_refs = [node.attrib["definition"] for node in olx_root.iter("xblock-include")]
+                if len(children_refs) == 1:
+                    # This vertical actually contains only a single block:
+                    old_block_type, old_block_id = children_refs[0].split("/")
+                    self.convert_and_upload_olx_file(
+                        olx_dir, "definition-{}-{}.xml".format(old_block_type, old_block_id), old_block_type, new_key,
+                    )
                 else:
-                    raise NotImplementedError("Can't handle {} blocks yet.".format(new_key.block_type))
-            elif new_key.block_type == 'lx_image' and old_key.block_type == 'html':
-                # Convert from an HTML block to the new image block:
-                html_olx_str = read_olx('definition-1.xml')
-                try:
-                    image_url = re.search('src=[\'"](?P<img_url>[^\'"]+)[\'"]', html_olx_str).group('img_url')
-                except AttributeError:
-                    raise ValueError("Unable to find image src in html block OLX")
-                try:
-                    alt_text = re.search('alt=[\'"](?P<alt_text>[^\'"]+)[\'"]', html_olx_str).group('alt_text')
-                except AttributeError:
-                    alt_text = ""
-                olx_root = etree.fromstring(html_olx_str)
-                display_name = olx_root.attrib["display_name"]
-                olx_node_out = etree.Element("lx_image")
-                olx_node_out.attrib["image_url"] = image_url
-                olx_node_out.attrib["alt_text"] = alt_text
-                olx_node_out.attrib["display_name"] = display_name
-                print(" -> converting to image")
-                set_block_olx(new_key, olx_node_out)
-            elif new_key.block_type == 'lx_simulation' and old_key.block_type == 'html':
-                # Convert from an HTML block to the new simulation block:
-                html_olx_str = read_olx('definition-1.xml')
-                try:
-                    sim_url = re.search('(src|href)=[\'"](?P<sim_url>[^\'"]+)[\'"]', html_olx_str).group('sim_url')
-                except AttributeError:
-                    raise ValueError("Unable to find simulation src in html block OLX.")
-                olx_root = etree.fromstring(html_olx_str)
-                display_name = olx_root.attrib["display_name"]
-                olx_node_out = etree.Element("lx_simulation")
-                olx_node_out.attrib["simulation_url"] = sim_url
-                olx_node_out.attrib["display_name"] = display_name
-                print(" -> converting to simulation")
-                set_block_olx(new_key, olx_node_out)
+                    raise NotImplementedError("Can't handle {} -> {}".format(old_key, new_key))
             else:
-                raise NotImplementedError("Can't handle {} -> {}".format(old_key, new_key))
+                # This is a single block. Convert and upload it:
+                self.convert_and_upload_olx_file(olx_dir, "definition-1.xml", old_key.block_type, new_key)
 
     def set_logging(self, verbosity):
         """
@@ -168,3 +125,73 @@ class Command(BaseCommand):
         elif verbosity == 3:
             self.logger.setLevel(logging.DEBUG)
             handler.setFormatter(logging.Formatter('%(name)s|%(asctime)s|%(levelname)s|%(message)s'))
+
+    def set_block_olx(self, block_key, new_olx):
+        """
+        Helper method for overwriting an XBlock's OLX
+
+        new_olx can be an OLX string or an etree Element node
+        """
+        if not isinstance(new_olx, six.string_types):
+            new_olx = etree.tostring(new_olx, encoding="utf-8", pretty_print=True)
+        try:
+            existing_olx = self.studio_client.get_library_block_olx(block_key)
+        except HTTPError:
+            # For some reason this is sometimes returning a 500? Maybe unicode-related?
+            print(" -> Warning: 500 when trying to check existing OLX of {}".format(block_key))
+            existing_olx = "unknown"
+        if existing_olx.strip() != new_olx.strip():
+            self.studio_client.set_library_block_olx(block_key, new_olx)
+            self.studio_client.commit_library_changes(block_key.lib_key)
+            print(" -> Updated OLX of {}".format(block_key))
+        else:
+            print(" -> No change to OLX of {}".format(block_key))
+
+    def convert_and_upload_olx_file(self, olx_dir, olx_file, old_block_type, new_key):
+        """
+        Given a single OLX file (with no children), convert it if necessary from
+        old_block_type to new_key.block_type and upload it to Blockstore (as
+        new_key).
+        """
+
+        with open(olx_dir + '/' + olx_file, 'r') as fh:
+            olx_string = fh.read()
+
+        if old_block_type == new_key.block_type:
+            if new_key.block_type in ('html', 'video', 'drag-and-drop-v2', 'problem'):
+                self.set_block_olx(new_key, olx_string)
+            else:
+                raise NotImplementedError("Can't handle {} blocks yet.".format(new_key.block_type))
+        elif new_key.block_type == 'lx_image' and old_block_type == 'html':
+            # Convert from an HTML block to the new image block:
+            try:
+                image_url = re.search('src=[\'"](?P<img_url>[^\'"]+)[\'"]', olx_string).group('img_url')
+            except AttributeError:
+                raise ValueError("Unable to find image src in html block OLX")
+            try:
+                alt_text = re.search('alt=[\'"](?P<alt_text>[^\'"]+)[\'"]', olx_string).group('alt_text')
+            except AttributeError:
+                alt_text = ""
+            olx_root = etree.fromstring(olx_string)
+            display_name = olx_root.attrib["display_name"]
+            olx_node_out = etree.Element("lx_image")
+            olx_node_out.attrib["image_url"] = image_url
+            olx_node_out.attrib["alt_text"] = alt_text
+            olx_node_out.attrib["display_name"] = display_name
+            print(" -> converting to image")
+            self.set_block_olx(new_key, olx_node_out)
+        elif new_key.block_type == 'lx_simulation' and old_block_type == 'html':
+            # Convert from an HTML block to the new simulation block:
+            try:
+                sim_url = re.search('(src|href)=[\'"](?P<sim_url>[^\'"]+)[\'"]', olx_string).group('sim_url')
+            except AttributeError:
+                raise ValueError("Unable to find simulation src in html block OLX.")
+            olx_root = etree.fromstring(olx_string)
+            display_name = olx_root.attrib["display_name"]
+            olx_node_out = etree.Element("lx_simulation")
+            olx_node_out.attrib["simulation_url"] = sim_url
+            olx_node_out.attrib["display_name"] = display_name
+            print(" -> converting to simulation")
+            self.set_block_olx(new_key, olx_node_out)
+        else:
+            raise NotImplementedError("Can't handle {} -> {}".format(old_block_type, new_key))
