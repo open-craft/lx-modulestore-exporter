@@ -15,6 +15,7 @@ from lxml import etree
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
 from requests.exceptions import HTTPError
+import six
 
 from .export_block import dir_path
 from ...export_data import export_data
@@ -75,7 +76,11 @@ class Command(BaseCommand):
         def set_block_olx(block_key, new_olx):
             """
             Helper method for overwriting an XBlock's OLX
+
+            new_olx can be an OLX string or an etree Element node
             """
+            if not isinstance(new_olx, six.string_types):
+                new_olx = etree.tostring(new_olx, encoding="utf-8", pretty_print=True)
             try:
                 existing_olx = studio_client.get_library_block_olx(block_key)
             except HTTPError:
@@ -113,25 +118,37 @@ class Command(BaseCommand):
                     raise NotImplementedError("Can't handle {} blocks yet.".format(new_key.block_type))
             elif new_key.block_type == 'lx_image' and old_key.block_type == 'html':
                 # Convert from an HTML block to the new image block:
-                html = read_olx('definition-1.xml')
+                html_olx_str = read_olx('definition-1.xml')
                 try:
-                    image_url = re.search('src=[\'"](?P<img_url>[^\'"]+)[\'"]', html).group('img_url')
+                    image_url = re.search('src=[\'"](?P<img_url>[^\'"]+)[\'"]', html_olx_str).group('img_url')
                 except AttributeError:
-                    print(html)
-                    raise ValueError("Unable to find image in HTML ^")
+                    raise ValueError("Unable to find image src in html block OLX")
                 try:
-                    alt_text = re.search('alt=[\'"](?P<alt_text>[^\'"]+)[\'"]', html).group('alt_text')
+                    alt_text = re.search('alt=[\'"](?P<alt_text>[^\'"]+)[\'"]', html_olx_str).group('alt_text')
                 except AttributeError:
                     alt_text = ""
-                olx_root = etree.fromstring(html)
+                olx_root = etree.fromstring(html_olx_str)
                 display_name = olx_root.attrib["display_name"]
                 olx_node_out = etree.Element("lx_image")
                 olx_node_out.attrib["image_url"] = image_url
                 olx_node_out.attrib["alt_text"] = alt_text
                 olx_node_out.attrib["display_name"] = display_name
-                new_olx_str = etree.tostring(olx_node_out, encoding="utf-8", pretty_print=True)
-                print(" -> converting to image:")
-                set_block_olx(new_key, new_olx_str)
+                print(" -> converting to image")
+                set_block_olx(new_key, olx_node_out)
+            elif new_key.block_type == 'lx_simulation' and old_key.block_type == 'html':
+                # Convert from an HTML block to the new simulation block:
+                html_olx_str = read_olx('definition-1.xml')
+                try:
+                    sim_url = re.search('src=[\'"](?P<sim_url>[^\'"]+)[\'"]', html_olx_str).group('sim_url')
+                except AttributeError:
+                    raise ValueError("Unable to find simulation src in html block OLX.")
+                olx_root = etree.fromstring(html_olx_str)
+                display_name = olx_root.attrib["display_name"]
+                olx_node_out = etree.Element("lx_simulation")
+                olx_node_out.attrib["simulation_url"] = sim_url
+                olx_node_out.attrib["display_name"] = display_name
+                print(" -> converting to simulation")
+                set_block_olx(new_key, olx_node_out)
             else:
                 raise NotImplementedError("Can't handle {} -> {}".format(old_key, new_key))
 
