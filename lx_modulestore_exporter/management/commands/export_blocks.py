@@ -55,6 +55,7 @@ class Command(BaseCommand):
             block_key_list = [line.split()[0] for line in id_fh.readlines() if line.strip() and line.strip()[0] != '#']
 
         for block_key_str in block_key_list:
+            print(block_key_str)
             block_key = UsageKey.from_string(block_key_str)
             export_data(root_block_key=block_key, out_dir=options['out_dir'])
 

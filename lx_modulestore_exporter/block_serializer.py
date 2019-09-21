@@ -127,7 +127,7 @@ class XBlockSerializer(object):
                 def_id = blockstore_def_key_from_modulestore_usage_key(child_id)
                 olx_node.append(olx_node.makeelement("xblock-include", {"definition": def_id}))
         # Store the resulting XML as a string:
-        self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
+        self.olx_str = etree.tostring(olx_node, encoding="unicode", pretty_print=True)
 
     def serialize_html_block(self, block):
         """
@@ -137,7 +137,7 @@ class XBlockSerializer(object):
         if block.display_name:
             olx_node.attrib["display_name"] = block.display_name
         olx_node.text = etree.CDATA("\n" + block.data + "\n")
-        self.olx_str = etree.tostring(olx_node, encoding="utf-8", pretty_print=True)
+        self.olx_str = etree.tostring(olx_node, encoding="unicode", pretty_print=True)
 
     def add_static_asset(self, asset):
         """

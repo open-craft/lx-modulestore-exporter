@@ -11,6 +11,7 @@ from django.conf import settings
 from django.utils.translation import gettext as _
 import boto3
 import botocore
+import six
 
 from . import compat
 from .block_serializer import XBlockSerializer
@@ -90,11 +91,11 @@ def export_data(root_block_key, out_dir):
 
         for asset_file in data.static_files:
             dest_path = s3_path_prefix + asset_file.name
-            print("Uploading static asset file to S3: {} -> {}".format(asset_file.name, dest_path))
             if not s3_bucket_has_object(dest_path):
+                print(" -> Uploading static asset file to S3: {} -> {}".format(asset_file.name, dest_path))
                 s3_bucket.put_object(Key=dest_path, Body=asset_file.data)
             else:
-                print(" -> skipping, already uploaded")
+                print(" -> already uploaded static asset {}".format(asset_file.name))
             dest_url = s3_url_prefix + asset_file.name
             olx_str = olx_str.replace('/static/' + asset_file.name, dest_url)
         
@@ -104,6 +105,6 @@ def export_data(root_block_key, out_dir):
             olx_path = out_dir + 'definition-{}.xml'.format(data.def_id.replace('/', '-'))
         with open(olx_path, 'wb') as fh:
             log.info(" -> " + olx_path)
-            fh.write(olx_str)
+            fh.write(olx_str.encode('utf-8'))
 
     log.info("  ")
