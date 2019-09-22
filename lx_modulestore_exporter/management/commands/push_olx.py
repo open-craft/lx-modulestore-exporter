@@ -205,6 +205,10 @@ class Command(BaseCommand):
 
         if old_block_type == new_key.block_type:
             if new_key.block_type in ('html', 'video', 'drag-and-drop-v2', 'problem'):
+                # Temporary fix: edx-val is breaking videos on prod if the video
+                # exists in VAL
+                if new_key.block_type == 'video':
+                    olx_string = olx_string.replace(' edx_video_id="', ' edx_video_id_DISABLED="')
                 self.set_block_olx(new_key, olx_string)
             else:
                 return False
