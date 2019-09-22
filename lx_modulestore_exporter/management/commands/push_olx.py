@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand
 from lxml import etree
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import UsageKey
+from opaque_keys.edx.locator import LibraryUsageLocatorV2
 from requests.exceptions import HTTPError
 import six
 
@@ -102,9 +103,41 @@ class Command(BaseCommand):
                 if len(children_refs) == 1:
                     # This vertical actually contains only a single block:
                     old_block_type, old_block_id = children_refs[0].split("/")
-                    self.convert_and_upload_olx_file(
+                    result = self.convert_and_upload_olx_file(
                         olx_dir, "definition-{}-{}.xml".format(old_block_type, old_block_id), old_block_type, new_key,
                     )
+                    if not result:
+                        unhandled_items.append((old_key, new_key))
+                elif new_key.block_type == 'unit':
+                    # Upload each child OLX:
+                    worked = True
+                    for child_ref in children_refs:
+                        child_block_type, child_block_id = child_ref.split("/")
+                        child_new_key = LibraryUsageLocatorV2(
+                            lib_key=new_key.lib_key,
+                            block_type=child_block_type,
+                            usage_id=child_block_id,
+                        )
+                        if self.studio_client.get_library_block(child_new_key) is None:
+                            # Before we can upload the OLX we have to create the child block:
+                            self.studio_client.add_block_to_library(
+                                child_new_key.lib_key,
+                                child_block_type,
+                                child_block_id,
+                                parent_block=new_key,
+                            )
+                        # Now update the OLX of the child block:
+                        result = self.convert_and_upload_olx_file(
+                            olx_dir,
+                            "definition-{}-{}.xml".format(child_block_type, child_block_id),
+                            child_block_type,
+                            child_new_key,
+                        )
+                        worked = worked and result
+                    if worked:
+                        self.set_block_olx(new_key, vertical_olx_str)
+                    else:
+                        unhandled_items.append((old_key, new_key))
                 else:
                     print(" -> can't handle this type, no known conversion")
                     unhandled_items.append((old_key, new_key))

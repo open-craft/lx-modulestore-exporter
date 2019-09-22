@@ -7,6 +7,7 @@ import requests
 from django.conf import settings
 from oauthlib.oauth2 import BackendApplicationClient, TokenExpiredError
 from requests_oauthlib import OAuth2Session
+import six
 
 URL_LIB_PREFIX = '/api/libraries/v2/'
 URL_LIB_CREATE = URL_LIB_PREFIX
@@ -85,3 +86,18 @@ class StudioClient(object):
     def commit_library_changes(self, lib_key):
         """ Commit changes to an existing library """
         self.api_call('post', URL_LIB_COMMIT.format(lib_key=lib_key))
+    
+    def add_block_to_library(self, lib_key, block_type, slug, parent_block=None):
+        """ Add a new XBlock to the library """
+        block_info = {"block_type": block_type, "definition_id": slug}
+        if parent_block:
+            block_info["parent_block"] = six.text_type(parent_block)
+        data = self.api_call('post', URL_LIB_BLOCKS.format(lib_key=lib_key), json=block_info)
+
+    def get_library_block(self, block_key):
+        """ Get a specific block in the library """
+        response = self.api_call_raw('get', URL_LIB_BLOCK.format(block_key=block_key))
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
