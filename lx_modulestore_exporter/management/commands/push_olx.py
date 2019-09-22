@@ -168,7 +168,7 @@ class Command(BaseCommand):
         """
 
         with open(olx_dir + '/' + olx_file, 'r') as fh:
-            olx_string = fh.read()
+            olx_string = six.text_type(fh.read(), encoding="utf-8")
 
         if old_block_type == new_key.block_type:
             if new_key.block_type in ('html', 'video', 'drag-and-drop-v2', 'problem'):
