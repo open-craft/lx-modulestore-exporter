@@ -174,13 +174,14 @@ class Command(BaseCommand):
             if new_key.block_type in ('html', 'video', 'drag-and-drop-v2', 'problem'):
                 self.set_block_olx(new_key, olx_string)
             else:
-                raise NotImplementedError("Can't handle {} blocks yet.".format(new_key.block_type))
+                return False
         elif new_key.block_type == 'lx_image' and old_block_type == 'html':
             # Convert from an HTML block to the new image block:
             try:
                 image_url = re.search('src=[\'"](?P<img_url>[^\'"]+)[\'"]', olx_string).group('img_url')
             except AttributeError:
-                raise ValueError("Unable to find image src in html block OLX")
+                print(" -> Unable to find image src in html block OLX!")
+                return False
             try:
                 alt_text = re.search('alt=[\'"](?P<alt_text>[^\'"]+)[\'"]', olx_string).group('alt_text')
             except AttributeError:
@@ -198,7 +199,8 @@ class Command(BaseCommand):
             try:
                 sim_url = re.search('(src|href)=[\'"](?P<sim_url>[^\'"]+)[\'"]', olx_string).group('sim_url')
             except AttributeError:
-                raise ValueError("Unable to find simulation src in html block OLX.")
+                print(" -> Unable to find simulation src in html block OLX!")
+                return False
             olx_root = etree.fromstring(olx_string)
             display_name = olx_root.attrib["display_name"]
             olx_node_out = etree.Element("lx_simulation")
